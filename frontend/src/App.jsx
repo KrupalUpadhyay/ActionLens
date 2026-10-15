@@ -33,9 +33,15 @@ function App() {
   const socketRef = useRef(null)
   const streamRef = useRef(null)
   const retryTimer = useRef(null)
+  const scanTimerRef = useRef(null)
+  const scanEndsAtRef = useRef(0)
+  const requestPendingRef = useRef(false)
   const [cameraError, setCameraError] = useState('')
+  const [cameraReady, setCameraReady] = useState(false)
   const [socketOpen, setSocketOpen] = useState(false)
   const [extracting, setExtracting] = useState(false)
+  const [scanning, setScanning] = useState(false)
+  const [scanSecondsLeft, setScanSecondsLeft] = useState(0)
   const [extractedData, setExtractedData] = useState(EMPTY)
   const [notice, setNotice] = useState('')
 
@@ -44,34 +50,56 @@ function App() {
     window.setTimeout(() => setNotice(''), 2200)
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    async function startCamera() {
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setCameraError('Camera access requires a supported browser and a secure connection.')
-        return
-      }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        })
-        if (cancelled) { stream.getTracks().forEach((track) => track.stop()); return }
-        streamRef.current = stream
-        if (videoRef.current) videoRef.current.srcObject = stream
-      } catch (error) {
-        setCameraError(error.name === 'NotAllowedError'
-          ? 'Allow camera access in your browser to start scanning.'
-          : 'Could not start the camera. Check that it is available and try again.')
-      }
+  const stopScan = useCallback(() => {
+    window.clearInterval(scanTimerRef.current)
+    scanTimerRef.current = null
+    scanEndsAtRef.current = 0
+    setScanning(false)
+    setScanSecondsLeft(0)
+    setExtracting(false)
+  }, [])
+
+  const requestCamera = useCallback(async () => {
+    setCameraError('')
+    setCameraReady(false)
+    if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(location.hostname)) {
+      setCameraError('Camera access requires HTTPS on an external browser. Open the secure https:// site instead of a local network address.')
+      return
     }
-    startCamera()
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('This browser does not provide camera access. Open ActionLens in a current browser over HTTPS.')
+      return
+    }
+    try {
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play().catch(() => {})
+      }
+    } catch (error) {
+      setCameraReady(false)
+      const messages = {
+        NotAllowedError: 'Camera permission is blocked. Allow camera access for this site in your browser settings, then tap Enable camera.',
+        NotFoundError: 'No camera was found on this device.',
+        NotReadableError: 'The camera is already in use by another app. Close that app and retry.',
+      }
+      setCameraError(messages[error.name] || 'Could not start the camera. Check browser permissions and try again.')
+    }
+  }, [])
+
+  useEffect(() => {
+    requestCamera()
     return () => {
-      cancelled = true
+      window.clearInterval(scanTimerRef.current)
       streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = null
     }
-  }, [])
+  }, [requestCamera])
 
   useEffect(() => {
     let disposed = false
@@ -84,7 +112,9 @@ function App() {
       socket.onmessage = (event) => {
         try {
           const response = JSON.parse(event.data)
-          if (response.error) { showNotice(response.error); return }
+          requestPendingRef.current = false
+          if (response.busy) { setExtracting(false); return }
+          if (response.error) { stopScan(); showNotice(response.error); return }
           if (typeof response.detected === 'boolean' && response.data) {
             setExtractedData(response)
             setExtracting(false)
@@ -94,6 +124,8 @@ function App() {
       socket.onerror = () => socket.close()
       socket.onclose = () => {
         setSocketOpen(false)
+        requestPendingRef.current = false
+        stopScan()
         if (!disposed) {
           retryTimer.current = window.setTimeout(connect, retryDelay)
           retryDelay = Math.min(retryDelay * 1.7, 10000)
@@ -106,29 +138,58 @@ function App() {
       window.clearTimeout(retryTimer.current)
       socketRef.current?.close()
     }
-  }, [showNotice])
+  }, [showNotice, stopScan])
 
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const video = videoRef.current
-      const canvas = canvasRef.current
-      const socket = socketRef.current
-      if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || socket?.readyState !== WebSocket.OPEN) return
-      const maxWidth = 960
-      const scale = Math.min(1, maxWidth / video.videoWidth)
-      canvas.width = Math.round(video.videoWidth * scale)
-      canvas.height = Math.round(video.videoHeight * scale)
-      const context = canvas.getContext('2d', { alpha: false })
-      context.drawImage(video, 0, 0, canvas.width, canvas.height)
-      const image = canvas.toDataURL('image/jpeg', 0.72)
-      // Keep each frame bounded for reliable mobile uploads and backend memory use.
-      if (image.length < 1_500_000 && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ image }))
-        setExtracting(true)
-      }
-    }, 650)
-    return () => window.clearInterval(timer)
+  const sendFrame = useCallback(() => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    const socket = socketRef.current
+    if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || socket?.readyState !== WebSocket.OPEN || requestPendingRef.current) return
+    const maxWidth = 960
+    const scale = Math.min(1, maxWidth / video.videoWidth)
+    canvas.width = Math.round(video.videoWidth * scale)
+    canvas.height = Math.round(video.videoHeight * scale)
+    const context = canvas.getContext('2d', { alpha: false })
+    context.drawImage(video, 0, 0, canvas.width, canvas.height)
+    const image = canvas.toDataURL('image/jpeg', 0.72)
+    if (image.length >= 1_500_000) {
+      return
+    }
+    requestPendingRef.current = true
+    setExtracting(true)
+    socket.send(JSON.stringify({ image }))
   }, [])
+
+  const scanNow = useCallback(() => {
+    if (scanning) {
+      stopScan()
+      return
+    }
+    const video = videoRef.current
+    if (!video || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      showNotice('Camera is not ready. Enable camera access and try again.')
+      return
+    }
+    if (socketRef.current?.readyState !== WebSocket.OPEN) {
+      showNotice('Backend is not connected yet')
+      return
+    }
+    setExtractedData(EMPTY)
+    setScanning(true)
+    setExtracting(false)
+    setScanSecondsLeft(8)
+    scanEndsAtRef.current = Date.now() + 8000
+    sendFrame()
+    scanTimerRef.current = window.setInterval(() => {
+      const remaining = Math.max(0, Math.ceil((scanEndsAtRef.current - Date.now()) / 1000))
+      setScanSecondsLeft(remaining)
+      if (remaining <= 0) {
+        stopScan()
+        return
+      }
+      if (remaining % 2 === 0) sendFrame()
+    }, 1000)
+  }, [scanning, sendFrame, showNotice, stopScan])
 
   const item = extractedData.data || EMPTY.data
   const action = async () => {
@@ -144,7 +205,7 @@ function App() {
           break
         case 'CONTACT':
           await navigator.clipboard.writeText(item.email || item.value)
-          showNotice('Contact copied')
+          showNotice(item.email ? 'Email copied' : 'Phone number copied')
           break
         case 'RECEIPT':
           {
@@ -169,7 +230,11 @@ function App() {
   const actionInfo = {
     WIFI: { icon: Wifi, label: 'Copy password', detail: 'Wi-Fi network detected' },
     EVENT: { icon: CalendarPlus, label: 'Add to calendar', detail: 'Event detected' },
-    CONTACT: { icon: Mail, label: 'Copy email', detail: 'Contact detected' },
+    CONTACT: {
+      icon: Mail,
+      label: item.email ? 'Copy email' : 'Copy phone number',
+      detail: item.email ? 'Email detected' : 'Phone number detected',
+    },
     RECEIPT: { icon: CreditCard, label: `Log expense · ${item.value || 'amount'}`, detail: 'Receipt detected' },
     TRACKING: { icon: Copy, label: 'Copy tracking number', detail: 'Tracking number detected' },
   }[extractedData.category]
@@ -179,7 +244,7 @@ function App() {
 
   return (
     <main className="relative h-[100dvh] min-h-[520px] w-full overflow-hidden bg-[#080b12] text-white">
-      <video ref={videoRef} autoPlay muted playsInline className="absolute inset-0 h-full w-full object-cover" />
+      <video ref={videoRef} autoPlay muted playsInline onLoadedData={() => setCameraReady(true)} className="absolute inset-0 h-full w-full object-cover" />
       <canvas ref={canvasRef} className="hidden" />
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/65 via-transparent to-black/75" />
 
@@ -208,7 +273,7 @@ function App() {
 
       <div className="absolute inset-x-0 bottom-0 z-10 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8">
         <div className="mx-auto flex max-w-lg flex-col items-center gap-4">
-          {cameraError ? <div className="flex w-full items-start gap-2 rounded-2xl border border-rose-300/20 bg-rose-950/70 p-4 text-sm text-rose-100 backdrop-blur-xl"><X size={18} className="mt-0.5 shrink-0" />{cameraError}</div> : null}
+          {cameraError ? <div className="w-full rounded-2xl border border-rose-300/20 bg-rose-950/70 p-4 text-sm text-rose-100 backdrop-blur-xl"><div className="flex items-start gap-2"><X size={18} className="mt-0.5 shrink-0" /><span>{cameraError}</span></div>{!cameraError.includes('requires HTTPS') ? <button onClick={requestCamera} className="mt-3 w-full rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 font-semibold text-white hover:bg-white/15">Enable camera</button> : null}</div> : null}
           {actionInfo && extractedData.detected ? (
             <section className="w-full animate-[rise_.25s_ease-out] rounded-3xl border border-white/15 bg-[#101722]/85 p-4 shadow-2xl backdrop-blur-2xl sm:p-5">
               <div className="mb-4 flex items-center gap-3">
@@ -220,10 +285,11 @@ function App() {
             </section>
           ) : (
             <div className="rounded-full border border-white/10 bg-black/40 px-4 py-2.5 text-center text-sm text-white/80 backdrop-blur-xl">
-              {cameraError ? 'Camera unavailable' : extracting ? 'Scanning for something actionable…' : 'Point your camera at something useful'}
+              {cameraError ? 'Camera unavailable' : extracting ? 'Analyzing this image…' : 'Point at an object, then scan'}
             </div>
           )}
-          <div className="flex items-center gap-1.5 text-[11px] tracking-wide text-white/55"><span className={`h-1.5 w-1.5 rounded-full ${socketOpen ? 'bg-emerald-400' : 'bg-amber-300'}`} />Live scan · Frames are processed as you move</div>
+          {!cameraError && (!actionInfo || scanning) ? <button onClick={scanNow} disabled={!scanning && (!socketOpen || !cameraReady)} className="flex min-w-44 items-center justify-center gap-2 rounded-full bg-cyan-300 px-6 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"><ScanLine size={17} />{scanning ? `Stop scan · ${scanSecondsLeft}s` : 'Scan now'}</button> : null}
+          <div className="flex items-center gap-1.5 text-[11px] tracking-wide text-white/55"><span className={`h-1.5 w-1.5 rounded-full ${socketOpen ? 'bg-emerald-400' : 'bg-amber-300'}`} />{scanning ? 'Scanning for up to 8 seconds · up to 4 images' : 'Tap to scan · Images are sent only when you choose'}</div>
         </div>
       </div>
 

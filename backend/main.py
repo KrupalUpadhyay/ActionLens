@@ -25,10 +25,11 @@ class FrameMessage(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load once for the process; set ACTIONLENS_LOAD_MODEL=0 for health-only startup.
-    if os.getenv("ACTIONLENS_LOAD_MODEL", "1").lower() not in {"0", "false", "no"}:
-        app.state.engine = await asyncio.to_thread(ActionLensVLM)
-    else:
+    # The hosted model is initialized as a lightweight API client; no weights are downloaded.
+    try:
+        app.state.engine = ActionLensVLM()
+    except RuntimeError as exc:
+        logger.warning("Gemini inference is not configured: %s", exc)
         app.state.engine = None
     app.state.model_busy = False
     yield
@@ -51,7 +52,11 @@ app.add_middleware(
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "model": "ready" if app.state.engine else "disabled"}
+    return {
+        "status": "ok",
+        "inference": "ready" if app.state.engine else "needs GEMINI_API_KEY",
+        "model": os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
+    }
 
 
 @app.websocket("/ws/stream")
@@ -59,7 +64,7 @@ async def stream(websocket: WebSocket) -> None:
     await websocket.accept()
     engine = app.state.engine
     if engine is None:
-        await websocket.send_json({"error": "Model is not loaded on this server."})
+        await websocket.send_json({"error": "Backend is missing GEMINI_API_KEY. Configure it and restart the backend."})
         await websocket.close(code=1013)
         return
 
@@ -76,7 +81,9 @@ async def stream(websocket: WebSocket) -> None:
         except Exception:
             logger.exception("Frame inference failed")
             try:
-                await websocket.send_json({"error": "Frame processing failed."})
+                await websocket.send_json({
+                    "error": "Gemini inference failed. Check GEMINI_API_KEY, model availability, and Gemini API quota."
+                })
             except Exception:
                 pass
         finally:
@@ -91,7 +98,8 @@ async def stream(websocket: WebSocket) -> None:
                 await websocket.send_json({"error": "Expected a JSON object with an image base64 string."})
                 continue
             if app.state.model_busy:
-                # The client streams continuously; discard newer frames while inference is busy.
+                # Tell the sender to release its in-flight slot; another request is not being processed.
+                await websocket.send_json({"busy": True})
                 continue
             app.state.model_busy = True
             inference_task = asyncio.create_task(run_inference(frame.image))
