@@ -1,64 +1,171 @@
+<div align="center">
+
 # ActionLens
 
-ActionLens starts an 8-second scan when you tap **Scan now**. It captures up to one camera frame every two seconds (up to four images per session), sends at most one inference request at a time to a FastAPI backend, and displays an action extracted by Google's hosted Gemini vision model. The backend does not download model weights or need a GPU.
+### See it. Do it.
 
-## Gemini API key
+**Turn the things around you into useful next steps.** ActionLens uses your camera and a vision-language model to recognize actionable details in the real world, then puts the relevant action one tap away.
 
-1. Create an API key in [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. The default model is `gemini-3.5-flash-lite`, a current multimodal model for new projects. Check [model availability](https://ai.google.dev/gemini-api/docs/models) and [current pricing and free-tier limits](https://ai.google.dev/gemini-api/docs/pricing) for your account and region.
-3. The Gemini free tier is subject to quotas and availability. Google states that content sent on the free tier may be used to improve its products. Do not scan identity cards, passwords, receipts, or other sensitive material unless you are comfortable sending that image to Google's API under its applicable terms. Keep the key in the backend environment; never put it in a `VITE_*` variable or frontend code.
+![ActionLens concept illustration: a camera scans an object and surfaces an action](docs/actionlens-hero.svg)
 
-## Run the backend locally
+*Point. Scan. Act.*
 
-Python 3.10 or newer is required. In PowerShell:
+</div>
 
-```powershell
-cd backend
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
-$env:GEMINI_API_KEY = "your_google_ai_studio_key"
-$env:CORS_ORIGINS = "http://localhost:5173"
-uvicorn main:app --host 0.0.0.0 --port 8000
+## The idea
+
+Useful information is everywhere, but often trapped in the physical world: a Wi-Fi password printed on a router, an event date on a flyer, a total on a receipt, or an email on a business card. ActionLens lets people point their phone at an item and turn what they see into an action—without manually retyping it or navigating through forms.
+
+Tap **Scan now** to start an 8-second scan. ActionLens captures up to four compressed frames, sends one inference request at a time, and presents a contextual action when it recognizes something useful.
+
+| What it sees | What you can do |
+| --- | --- |
+| Wi-Fi details | Copy the password |
+| Event flyer | Download a calendar file |
+| Contact card | Copy an email or phone number |
+| Receipt | Log the total as an expense |
+| Tracking label | Copy the tracking number |
+
+## How it works
+
+```mermaid
+flowchart LR
+    A[Phone camera] -->|JPEG frames during scan| B[React web app]
+    B <-->|WebSocket JSON| C[FastAPI backend]
+    C -->|Image + extraction prompt| D[Gemini vision API]
+    D -->|Structured JSON| C
+    C -->|Validated action data| B
+    B --> E[Copy, calendar, or expense action]
 ```
 
-Optionally set `GEMINI_MODEL` before starting Uvicorn to use another Gemini model that accepts image input and structured output. `GET http://localhost:8000/health` reports whether the API key is configured. The key is read only by the backend.
+The frontend handles camera access, scan timing, and action UI. The backend validates incoming frames and serializes model calls. Gemini performs hosted image inference, so the backend does not download model weights or require a GPU.
 
-## Run the frontend locally
+## Built with
 
-In another terminal:
+- **Frontend:** React, Vite, Tailwind CSS, browser MediaDevices API, native WebSockets
+- **Backend:** Python 3.10+, FastAPI, Pydantic v2
+- **Vision:** Google Gemini API with structured JSON output
+- **Hosting:** Netlify-ready frontend; container-ready backend
 
-```powershell
+## Run locally
+
+### Prerequisites
+
+- Python 3.10 or newer
+- Node.js 18 or newer and npm
+- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+
+### 1. Start the backend
+
+From the repository root, create and activate a virtual environment, then install the backend dependencies:
+
+```bash
+cd backend
+python -m venv .venv
+```
+
+Activate it using the command for your shell:
+
+```bash
+# macOS / Linux
+source .venv/bin/activate
+
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+```
+
+Install packages and configure the API key in the backend process environment:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+```bash
+# macOS / Linux
+export GEMINI_API_KEY="your_gemini_api_key"
+export CORS_ORIGINS="http://localhost:5173"
+
+# Windows PowerShell
+$env:GEMINI_API_KEY = "your_gemini_api_key"
+$env:CORS_ORIGINS = "http://localhost:5173"
+```
+
+Run the service from the `backend` directory:
+
+```bash
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+The health endpoint is available at `http://localhost:8000/health`.
+
+### 2. Start the frontend
+
+In a second terminal, from the repository root:
+
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Open the Vite URL, allow camera access, point at an item, and tap **Scan now**. The frontend sends compressed JPEG frames during the 8-second session. Camera access requires HTTPS outside localhost; a local-network address such as `http://192.168.x.x:5173` is not a secure origin. Use the HTTPS deployed frontend from an external device and configure `VITE_WS_URL` to point it to a reachable secure backend.
+Open the Vite URL, grant camera permission, and tap **Scan now**. Camera access requires HTTPS on deployed sites; localhost is allowed for development.
 
-For a deployed frontend, set `VITE_WS_URL` at build time to the backend WebSocket URL, such as `wss://api.example.com/ws/stream`. Set `CORS_ORIGINS` on the backend to the exact frontend origin. The repository-root `netlify.toml` contains the Netlify build settings.
+## Configuration
 
-## Docker
+| Variable | Where | Purpose | Default |
+| --- | --- | --- | --- |
+| `GEMINI_API_KEY` | Backend | Authenticates Gemini API requests | Required |
+| `GEMINI_MODEL` | Backend | Gemini model name | `gemini-3.5-flash-lite` |
+| `CORS_ORIGINS` | Backend | Comma-separated allowed frontend origins | `http://localhost:5173` |
+| `VITE_WS_URL` | Frontend build | Backend WebSocket endpoint | `ws(s)://<current-host>:8000/ws/stream` |
 
-Build from the repository root:
+For a hosted frontend, set `VITE_WS_URL` to the backend's secure WebSocket URL, for example `wss://api.example.com/ws/stream`, before building. Set `CORS_ORIGINS` to the deployed frontend origin, such as `https://example.netlify.app`.
 
-```bash
-docker build -t actionlens-backend ./backend
-```
-
-Run the container with `GEMINI_API_KEY` and `CORS_ORIGINS` set as environment variables. The container only runs the API client; inference happens through Google's hosted Gemini API.
+The root `netlify.toml` configures the frontend build. The backend includes a Dockerfile and can run on a Python web-service host. For example, a Render service can use `backend` as its root directory, `pip install -r requirements.txt` as its build command, and `uvicorn main:app --host 0.0.0.0 --port $PORT` as its start command. Free hosting plans may sleep while idle and have usage limits.
 
 ## WebSocket contract
 
-The client sends `{"image":"data:image/jpeg;base64,..."}` to `/ws/stream`. The backend returns one JSON object:
+The client sends one image at a time to `/ws/stream`:
+
+```json
+{"image":"data:image/jpeg;base64,<encoded-image>"}
+```
+
+The backend replies with normalized extraction data:
 
 ```json
 {
   "detected": true,
-  "category": "WIFI",
-  "data": {"title": "Home Wi-Fi", "value": "example-password", "date": "", "email": ""},
+  "category": "CONTACT",
+  "data": {
+    "title": "Example Person",
+    "value": "+1 555 010 1234",
+    "date": "",
+    "email": "person@example.com"
+  },
   "bounding_box": [0.1, 0.2, 0.8, 0.7]
 }
 ```
 
-Categories are `WIFI`, `EVENT`, `CONTACT`, `TRACKING`, `RECEIPT`, and `NONE`. `data` always contains `title`, `value`, `date`, and `email`; inapplicable values are empty strings. Bounding-box coordinates are normalized from 0 to 1.
+`category` is one of `WIFI`, `EVENT`, `CONTACT`, `TRACKING`, `RECEIPT`, or `NONE`. The `data` object always includes `title`, `value`, `date`, and `email`; unused fields are empty strings. `bounding_box` contains normalized `[x1, y1, x2, y2]` coordinates between 0 and 1.
+
+## Privacy and API usage
+
+Camera frames are sent to the configured backend only after a person starts a scan. The backend forwards them to Gemini for inference. API quotas and pricing depend on the selected model and account. Review [Google's Gemini API pricing and data-use terms](https://ai.google.dev/gemini-api/docs/pricing) before using real personal or sensitive information; free-tier content may be used to improve Google's products. Never expose `GEMINI_API_KEY` in frontend code or commit it to the repository.
+
+## Project layout
+
+```text
+ActionLens/
+├── backend/
+│   ├── main.py          # FastAPI health endpoint and WebSocket route
+│   ├── vlm_engine.py    # Gemini image inference and response validation
+│   ├── requirements.txt
+│   └── Dockerfile
+├── frontend/
+│   ├── src/App.jsx      # Camera scanning and contextual actions
+│   └── package.json
+├── docs/
+│   └── actionlens-hero.svg
+└── netlify.toml
+```

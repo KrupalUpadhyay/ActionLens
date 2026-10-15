@@ -118,6 +118,7 @@ function App() {
           if (typeof response.detected === 'boolean' && response.data) {
             setExtractedData(response)
             setExtracting(false)
+            if (response.detected) stopScan()
           }
         } catch { showNotice('The server returned an unreadable response.') }
       }
@@ -241,55 +242,80 @@ function App() {
   const ActionIcon = actionInfo?.icon
   const box = extractedData.bounding_box || [0, 0, 0, 0]
   const hasBox = extractedData.detected && box.length === 4 && box.some((value) => value > 0)
+  const scanTargets = [
+    { icon: Wifi, label: 'Wi-Fi' },
+    { icon: CalendarPlus, label: 'Events' },
+    { icon: Mail, label: 'Contacts' },
+    { icon: CreditCard, label: 'Receipts' },
+    { icon: Copy, label: 'Tracking' },
+  ]
 
   return (
     <main className="relative h-[100dvh] min-h-[520px] w-full overflow-hidden bg-[#080b12] text-white">
       <video ref={videoRef} autoPlay muted playsInline onLoadedData={() => setCameraReady(true)} className="absolute inset-0 h-full w-full object-cover" />
       <canvas ref={canvasRef} className="hidden" />
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/65 via-transparent to-black/75" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_25%,rgba(4,9,15,.22)_72%,rgba(4,9,15,.68)_100%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#07101a]/70 via-transparent to-[#07101a]/90" />
 
-      <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-5 pb-8 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-8">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl border border-white/15 bg-white/10 backdrop-blur-xl"><ScanLine size={20} className="text-cyan-300" /></div>
-          <div><div className="text-sm font-semibold tracking-wide">ActionLens</div><div className="text-[11px] text-white/60">See it. Do it.</div></div>
+      <header className="absolute inset-x-0 top-0 z-10 flex items-center justify-between px-5 pt-[max(1.15rem,env(safe-area-inset-top))] sm:px-8">
+        <div className="flex items-center gap-3 rounded-[20px] border border-white/10 bg-[#07111b]/40 py-2 pl-2 pr-4 shadow-lg shadow-black/10 backdrop-blur-xl">
+          <div className="grid h-10 w-10 place-items-center rounded-[14px] bg-gradient-to-br from-cyan-200/20 to-emerald-200/10 ring-1 ring-inset ring-cyan-100/25"><ScanLine size={20} className="text-cyan-200" /></div>
+          <div><div className="text-sm font-semibold tracking-wide">ActionLens</div><div className="mt-0.5 text-[10px] tracking-[.12em] text-white/55">SEE IT. DO IT.</div></div>
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-2 text-xs text-white/80 backdrop-blur-xl">
-          <span className={`h-2 w-2 rounded-full ${socketOpen ? 'bg-emerald-400 shadow-[0_0_10px_#34d399]' : 'bg-amber-400'}`} />
-          {socketOpen ? <><Signal size={14} /> Live</> : 'Connecting'}
+        <div className="flex items-center gap-2.5 rounded-full border border-white/15 bg-[#07111b]/55 px-3.5 py-2.5 text-xs font-medium text-white/85 shadow-lg shadow-black/10 backdrop-blur-xl">
+          <span className={`relative flex h-2.5 w-2.5 rounded-full ${cameraReady && socketOpen ? 'bg-emerald-400 shadow-[0_0_12px_#34d399]' : 'bg-amber-300'}`}>
+            {cameraReady && socketOpen ? <span className="absolute inset-0 animate-ping rounded-full bg-emerald-300 opacity-35" /> : null}
+          </span>
+          {cameraReady && socketOpen ? <><Signal size={14} className="text-emerald-200" /> Ready</> : !cameraReady ? 'Camera setup' : 'Connecting'}
         </div>
       </header>
 
       <div className="pointer-events-none absolute inset-0 z-[1] grid place-items-center">
         {hasBox ? <div className="absolute rounded-xl border-2 border-cyan-300/90 shadow-[0_0_28px_#22d3ee55]" style={{ left: `${box[0] * 100}%`, top: `${box[1] * 100}%`, width: `${Math.max(3, (box[2] - box[0]) * 100)}%`, height: `${Math.max(3, (box[3] - box[1]) * 100)}%` }} /> : null}
-        <div className="relative h-52 w-52 sm:h-64 sm:w-64">
-          <span className="absolute left-0 top-0 h-9 w-9 rounded-tl-2xl border-l-2 border-t-2 border-cyan-300/90" />
-          <span className="absolute right-0 top-0 h-9 w-9 rounded-tr-2xl border-r-2 border-t-2 border-cyan-300/90" />
-          <span className="absolute bottom-0 left-0 h-9 w-9 rounded-bl-2xl border-b-2 border-l-2 border-cyan-300/90" />
-          <span className="absolute bottom-0 right-0 h-9 w-9 rounded-br-2xl border-b-2 border-r-2 border-cyan-300/90" />
-          <div className="absolute inset-x-4 top-1/2 h-px bg-gradient-to-r from-transparent via-cyan-300/60 to-transparent" />
-          <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full p-3 ${extracting ? 'animate-pulse text-cyan-300' : 'text-white/70'}`}><Sparkles size={20} /></div>
+        <div className={`scan-frame relative h-[min(38vh,310px)] min-h-[180px] w-[min(76vw,340px)] -translate-y-[12vh] rounded-[30px] border border-white/10 sm:-translate-y-[7vh] ${scanning ? 'scan-frame-active' : ''}`}>
+          <div className="absolute inset-3 rounded-[24px] border border-white/[.07]" />
+          <div className="absolute left-4 top-4 flex items-center gap-2 rounded-full border border-white/10 bg-black/25 px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[.19em] text-white/55 backdrop-blur-sm"><span className={`h-1.5 w-1.5 rounded-full ${scanning ? 'animate-pulse bg-cyan-200' : 'bg-white/40'}`} />{scanning ? 'Scanning' : 'Camera view'}</div>
+          <span className="absolute left-0 top-0 h-10 w-10 rounded-tl-[26px] border-l-[3px] border-t-[3px] border-cyan-200 shadow-[-3px_-3px_18px_#67e8f955]" />
+          <span className="absolute right-0 top-0 h-10 w-10 rounded-tr-[26px] border-r-[3px] border-t-[3px] border-cyan-200 shadow-[3px_-3px_18px_#67e8f955]" />
+          <span className="absolute bottom-0 left-0 h-10 w-10 rounded-bl-[26px] border-b-[3px] border-l-[3px] border-cyan-200 shadow-[-3px_3px_18px_#67e8f955]" />
+          <span className="absolute bottom-0 right-0 h-10 w-10 rounded-br-[26px] border-b-[3px] border-r-[3px] border-cyan-200 shadow-[3px_3px_18px_#67e8f955]" />
+          <div className={`scan-beam absolute inset-x-5 h-px bg-gradient-to-r from-transparent via-cyan-200 to-transparent ${scanning ? 'scan-beam-moving' : 'top-1/2 opacity-30'}`} />
+          <div className={`absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/15 bg-[#07111b]/35 p-3 backdrop-blur-sm ${extracting ? 'animate-pulse text-cyan-200' : 'text-white/75'}`}><Sparkles size={19} /></div>
+          <div className="absolute inset-x-0 bottom-4 text-center text-[10px] font-medium tracking-[.12em] text-white/50">ALIGN TEXT OR AN OBJECT</div>
         </div>
       </div>
 
-      <div className="absolute inset-x-0 bottom-0 z-10 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-8">
-        <div className="mx-auto flex max-w-lg flex-col items-center gap-4">
-          {cameraError ? <div className="w-full rounded-2xl border border-rose-300/20 bg-rose-950/70 p-4 text-sm text-rose-100 backdrop-blur-xl"><div className="flex items-start gap-2"><X size={18} className="mt-0.5 shrink-0" /><span>{cameraError}</span></div>{!cameraError.includes('requires HTTPS') ? <button onClick={requestCamera} className="mt-3 w-full rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 font-semibold text-white hover:bg-white/15">Enable camera</button> : null}</div> : null}
+      <div className="absolute inset-x-0 bottom-0 z-10 px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:pb-6">
+        <div className="mx-auto flex max-w-md flex-col gap-2.5 rounded-[26px] border border-white/15 bg-[#08121d]/75 p-3 shadow-[0_24px_80px_rgba(0,0,0,.48)] backdrop-blur-2xl sm:gap-3 sm:p-3.5">
+          {cameraError ? <div className="w-full rounded-2xl border border-rose-300/20 bg-rose-950/70 p-4 text-sm text-rose-100"><div className="flex items-start gap-2"><X size={18} className="mt-0.5 shrink-0" /><span>{cameraError}</span></div>{!cameraError.includes('requires HTTPS') ? <button onClick={requestCamera} className="mt-3 w-full rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 font-semibold text-white hover:bg-white/15">Enable camera</button> : null}</div> : null}
+
           {actionInfo && extractedData.detected ? (
-            <section className="w-full animate-[rise_.25s_ease-out] rounded-3xl border border-white/15 bg-[#101722]/85 p-4 shadow-2xl backdrop-blur-2xl sm:p-5">
-              <div className="mb-4 flex items-center gap-3">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-cyan-300/10 text-cyan-200"><ShieldCheck size={19} /></div>
-                <div className="min-w-0 flex-1"><div className="text-xs font-medium uppercase tracking-[.16em] text-cyan-200">{actionInfo.detail}</div><div className="mt-1 truncate text-base font-semibold">{item.title || item.email || item.value || 'Ready to act'}</div></div>
-                <button aria-label="Dismiss result" onClick={() => setExtractedData(EMPTY)} className="rounded-full p-2 text-white/50 hover:bg-white/10 hover:text-white"><X size={17} /></button>
+            <section className="w-full animate-[rise_.25s_ease-out] rounded-3xl border border-white/10 bg-white/[.06] p-3.5 sm:p-4">
+              <div className="mb-3 flex items-center gap-3">
+                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-cyan-300/10 text-cyan-200"><ShieldCheck size={20} /></div>
+                <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[.17em] text-cyan-200"><Sparkles size={12} />{actionInfo.detail}</div><div className="mt-1 truncate text-base font-semibold">{item.title || item.email || item.value || 'Ready to act'}</div></div>
+                <button aria-label="Dismiss result" onClick={() => setExtractedData(EMPTY)} className="rounded-full p-2 text-white/50 transition hover:bg-white/10 hover:text-white"><X size={17} /></button>
               </div>
-              <button onClick={action} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-cyan-300 px-4 py-3.5 text-sm font-bold text-slate-950 transition hover:bg-cyan-200 active:scale-[.99]"><ActionIcon size={17} />{actionInfo.label}</button>
+              <button onClick={action} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-cyan-200 to-teal-200 px-4 py-3.5 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/20 transition hover:brightness-105 active:scale-[.99]"><ActionIcon size={17} />{actionInfo.label}</button>
             </section>
           ) : (
-            <div className="rounded-full border border-white/10 bg-black/40 px-4 py-2.5 text-center text-sm text-white/80 backdrop-blur-xl">
-              {cameraError ? 'Camera unavailable' : extracting ? 'Analyzing this image…' : 'Point at an object, then scan'}
-            </div>
+            <>
+              <div className="flex items-center justify-between gap-3">
+                <div><div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-[.18em] text-cyan-200"><span className={`h-1.5 w-1.5 rounded-full ${scanning ? 'animate-pulse bg-cyan-200' : 'bg-emerald-300'}`} />{scanning ? 'Hold steady' : 'Ready to explore'}</div><h1 className="mt-1 text-base font-semibold tracking-tight text-white">{extracting ? 'Finding the useful bits…' : scanning ? 'Looking for an action' : 'What can ActionLens find?'}</h1></div>
+                <div className="shrink-0 rounded-lg border border-white/10 bg-white/[.06] px-2 py-1 text-[9px] font-semibold tracking-wide text-white/65"><span className="text-cyan-200">{scanning ? `${scanSecondsLeft}s` : '8 SEC'}</span><span className="ml-1">SCAN</span></div>
+              </div>
+              <p className="-mt-1 text-[11px] leading-snug text-white/55">{scanning ? 'Keep the item inside the frame as it scans.' : 'Point at a label, flyer, receipt, or card.'}</p>
+              <div className="scan-targets flex gap-1.5 overflow-x-auto pb-0.5" aria-label="Supported objects">
+                {scanTargets.map(({ icon: Icon, label }) => <div key={label} className="flex shrink-0 items-center gap-1 rounded-full border border-white/10 bg-white/[.045] px-2 py-1 text-[9px] font-medium text-white/70"><Icon size={11} className="text-cyan-200/80" />{label}</div>)}
+              </div>
+            </>
           )}
-          {!cameraError && (!actionInfo || scanning) ? <button onClick={scanNow} disabled={!scanning && (!socketOpen || !cameraReady)} className="flex min-w-44 items-center justify-center gap-2 rounded-full bg-cyan-300 px-6 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"><ScanLine size={17} />{scanning ? `Stop scan · ${scanSecondsLeft}s` : 'Scan now'}</button> : null}
-          <div className="flex items-center gap-1.5 text-[11px] tracking-wide text-white/55"><span className={`h-1.5 w-1.5 rounded-full ${socketOpen ? 'bg-emerald-400' : 'bg-amber-300'}`} />{scanning ? 'Scanning for up to 8 seconds · up to 4 images' : 'Tap to scan · Images are sent only when you choose'}</div>
+
+          {scanning ? <div className="scan-progress-track"><div className="scan-progress-value" style={{ width: `${((8 - scanSecondsLeft) / 8) * 100}%` }} /></div> : null}
+          {!cameraError ? <button onClick={scanNow} disabled={!scanning && (!socketOpen || !cameraReady)} className={`flex min-h-12 w-full items-center justify-center gap-2 rounded-xl px-5 text-[13px] font-bold text-slate-950 transition active:scale-[.99] disabled:cursor-not-allowed disabled:opacity-45 ${scanning ? 'border border-white/15 bg-white/10 text-white hover:bg-white/15' : 'bg-gradient-to-r from-cyan-200 via-cyan-200 to-teal-200 shadow-[0_8px_30px_rgba(34,211,238,.18)] hover:brightness-105'}`}>
+            {scanning ? <X size={16} /> : <ScanLine size={18} />}{scanning ? `Stop scan · ${scanSecondsLeft}s` : extractedData.detected ? 'Scan another item' : 'Scan now'}
+          </button> : null}
+          <div className="flex items-center justify-center gap-1 text-[9px] tracking-wide text-white/45"><ShieldCheck size={11} className="text-emerald-200/70" />{scanning ? 'Up to 4 frames · stops in 8 seconds' : 'Images sent only when you start scanning'}</div>
         </div>
       </div>
 

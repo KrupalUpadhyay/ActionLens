@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" fill="none" role="img" aria-labelledby="title desc">
+  <title id="title">ActionLens: point, scan, act</title>
+  <desc id="desc">An illustrated camera scan recognizes a Wi-Fi router and offers a copy-password action.</desc>
+  <defs>
+    <linearGradient id="bg" x1="56" y1="28" x2="1123" y2="486" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101827"/><stop offset="1" stop-color="#071017"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="373" y1="100" x2="825" y2="406" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#52E3F4" stop-opacity=".22"/><stop offset="1" stop-color="#54F0C3" stop-opacity=".02"/>
+    </linearGradient>
+    <linearGradient id="button" x1="794" y1="292" x2="1084" y2="348" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#91F0F6"/><stop offset="1" stop-color="#79E9D0"/>
+    </linearGradient>
+    <filter id="shadow" x="370" y="145" width="450" height="90" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="16"/>
+    </filter>
+    <style>
+      .scan { animation: scan 3s ease-in-out infinite; }
+      .float { animation: float 4s ease-in-out infinite; }
+      @keyframes scan { 0%, 100% { transform: translateY(0); opacity: .4; } 50% { transform: translateY(145px); opacity: 1; } }
+      @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-7px); } }
+      @media (prefers-reduced-motion: reduce) { .scan, .float { animation: none; } }
+    </style>
+  </defs>
+
+  <rect width="1200" height="500" rx="30" fill="url(#bg)"/>
+  <circle cx="599" cy="254" r="215" fill="url(#glow)"/>
+  <path d="M0 412C184 378 263 452 445 420s312-70 483-29 177 36 272 14v95H0v-88Z" fill="#0A131D"/>
+  <path d="M38 70h1124" stroke="#fff" stroke-opacity=".08"/>
+  <g fill="#F4FAFF" font-family="Inter,ui-sans-serif,system-ui,sans-serif">
+    <text x="54" y="48" font-size="14" font-weight="700" letter-spacing="2.8" fill="#72E8EF">ACTIONLENS</text>
+    <text x="954" y="48" font-size="13" fill="#A9B6C9">CAMERA · VISION · ACTION</text>
+  </g>
+
+  <!-- Camera frame -->
+  <g>
+    <rect x="361" y="111" width="465" height="300" rx="31" fill="#101D2B" fill-opacity=".62" stroke="#D9F6FF" stroke-opacity=".14" stroke-width="2"/>
+    <path d="M385 174v-24a15 15 0 0 1 15-15h31M802 174v-24a15 15 0 0 0-15-15h-31M385 347v24a15 15 0 0 0 15 15h31M802 347v24a15 15 0 0 1-15 15h-31" stroke="#66E9F3" stroke-width="4" stroke-linecap="round"/>
+    <!-- Router illustration -->
+    <g>
+      <path d="m530 208-15-59m190 59 15-59" stroke="#A9BED0" stroke-width="8" stroke-linecap="round"/>
+      <path d="M535 228c0-24 19-43 43-43h75c24 0 43 19 43 43v96H535v-96Z" fill="#223347" stroke="#A9BED0" stroke-opacity=".7" stroke-width="3"/>
+      <path d="M552 259h127v47H552z" rx="10" fill="#152333"/>
+      <circle cx="568" cy="282" r="5" fill="#68E5DA"/><circle cx="589" cy="282" r="5" fill="#68E5DA"/><circle cx="610" cy="282" r="5" fill="#68E5DA"/>
+      <path d="M640 281h24" stroke="#68E5DA" stroke-width="4" stroke-linecap="round"/>
+      <path d="M567 216c19-16 46-16 65 0m-54 12c12-10 29-10 41 0" stroke="#7CECF0" stroke-width="3" stroke-linecap="round" opacity=".85"/>
+    </g>
+    <!-- Animated scan light -->
+    <g class="scan">
+      <path d="M406 187h375" stroke="#68F4EA" stroke-opacity=".22" stroke-width="20" filter="url(#shadow)"/>
+      <path d="M406 187h375" stroke="#72F4EE" stroke-width="2"/>
+    </g>
+    <circle cx="593" cy="357" r="4" fill="#76ECEA"/>
+    <text x="608" y="362" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#A9BED0">Scanning for useful details</text>
+  </g>
+
+  <!-- Recognition connector -->
+  <path d="M827 257h49c18 0 23 24 41 24" stroke="#68E5DA" stroke-width="2" stroke-dasharray="5 7" opacity=".8"/>
+  <circle cx="827" cy="257" r="4" fill="#68E5DA"/>
+
+  <!-- Floating action card -->
+  <g class="float">
+    <rect x="880" y="172" width="276" height="204" rx="24" fill="#F7FAFC"/>
+    <rect x="901" y="194" width="42" height="42" rx="14" fill="#E0F8F5"/>
+    <path d="M913 218v-8a9 9 0 0 1 18 0v8m-20 0h22v13h-22z" stroke="#167F79" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="955" y="209" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="11" font-weight="700" letter-spacing="1.2" fill="#57918D">WI-FI FOUND</text>
+    <text x="955" y="228" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="15" font-weight="700" fill="#152332">Home network</text>
+    <rect x="902" y="253" width="230" height="1" fill="#DCE5EA"/>
+    <text x="902" y="278" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="12" fill="#6B7887">Next step</text>
+    <rect x="902" y="293" width="230" height="54" rx="16" fill="url(#button)"/>
+    <path d="M926 315h13a4 4 0 0 1 4 4v8h-13a4 4 0 0 1-4-4v-8Zm17 12v-8a4 4 0 0 0-4-4h-13" stroke="#102832" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="956" y="326" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="14" font-weight="700" fill="#102832">Copy password</text>
+  </g>
+
+  <text x="54" y="459" font-family="Inter,ui-sans-serif,system-ui,sans-serif" font-size="13" fill="#8292A6">Point your camera at the world. ActionLens finds the next step.</text>
+</svg>

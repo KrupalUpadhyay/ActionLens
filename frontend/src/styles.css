@@ -7,3 +7,24 @@
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button { font: inherit; }
 ::selection { background: #38bdf8; color: #08111a; }
+
+.scan-frame { box-shadow: inset 0 0 46px rgba(4, 15, 22, .18); transition: border-color .25s ease, box-shadow .25s ease; }
+.scan-frame-active { border-color: rgba(103, 232, 249, .36); box-shadow: inset 0 0 54px rgba(34, 211, 238, .06), 0 0 38px rgba(34, 211, 238, .08); }
+.scan-beam-moving { animation: scan-sweep 1.8s ease-in-out infinite; }
+.scan-progress-track { height: 3px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.1); }
+.scan-progress-value { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #67e8f9, #5eead4); box-shadow: 0 0 14px rgba(103,232,249,.75); transition: width .35s linear; }
+.scan-targets { scrollbar-width: none; -ms-overflow-style: none; }
+.scan-targets::-webkit-scrollbar { display: none; }
+
+@keyframes scan-sweep {
+  0% { top: 17%; opacity: .25; }
+  50% { opacity: 1; }
+  100% { top: 82%; opacity: .25; }
+}
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}
